@@ -11,6 +11,7 @@
 
 PORT=8080
 CONFIGS_DIR="/etc/wireguard/clients"
+NGROK_TOKEN="3BlBRsrRFB6ZIKZVcF5QUQyIboJ_7yiJeSr6mW9JkEt3esJEu"
 
 # Verification root
 if [ "$EUID" -ne 0 ]; then
@@ -36,29 +37,8 @@ if ! command -v ngrok &>/dev/null; then
 fi
 
 # ========================= TOKEN NGROK ======================================
-if [ -n "$1" ]; then
-    echo "[INFO] Configuration du token ngrok..."
-    ngrok config add-authtoken "$1"
-    echo "[INFO] Token configure."
-fi
-
-# Verifier que le token est configure
-if ! ngrok config check &>/dev/null && [ -z "$1" ]; then
-    echo ""
-    echo "============================================="
-    echo "  TOKEN NGROK REQUIS"
-    echo "============================================="
-    echo ""
-    echo "  1. Cree un compte gratuit sur https://ngrok.com"
-    echo "  2. Copie ton token depuis : ngrok.com/dashboard"
-    echo "     section 'Your Authtoken'"
-    echo ""
-    echo "  3. Relance avec ton token :"
-    echo "     sudo bash download-configs.sh TON_TOKEN"
-    echo ""
-    echo "============================================="
-    exit 1
-fi
+echo "[INFO] Configuration du token ngrok..."
+ngrok config add-authtoken "$NGROK_TOKEN"
 
 # ========================= PREPARATION FICHIERS =============================
 TMPDIR=$(mktemp -d)
