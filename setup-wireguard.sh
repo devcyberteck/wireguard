@@ -95,12 +95,6 @@ APTEOF
     info "Sources APT corrigees."
 fi
 
-# ========================= INSTALLATION =====================================
-info "Mise a jour des paquets..."
-apt update -y
-
-info "Installation de WireGuard et outils..."
-apt install -y wireguard qrencode
 
 # ========================= IP FORWARDING ====================================
 info "Activation du routage IP..."
@@ -110,16 +104,18 @@ if ! grep -q "^net.ipv4.ip_forward.*=.*1" /etc/sysctl.conf; then
 fi
 sysctl -p
 
+# ========================= PURGE ANCIENNE CONFIG ============================
+info "Purge des anciennes cles et configs..."
+systemctl stop wg-quick@wg0 2>/dev/null || true
+rm -f /etc/wireguard/server_private.key /etc/wireguard/server_public.key
+rm -rf /etc/wireguard/clients
+rm -f /etc/wireguard/wg0.conf
+
 # ========================= CLES SERVEUR =====================================
 info "Generation des cles du serveur..."
 cd /etc/wireguard
 umask 077
-
-if [ -f server_private.key ]; then
-    warn "Les cles serveur existent deja, elles seront conservees."
-else
-    wg genkey | tee server_private.key | wg pubkey > server_public.key
-fi
+wg genkey | tee server_private.key | wg pubkey > server_public.key
 
 SERVER_PRIV=$(cat server_private.key)
 SERVER_PUB=$(cat server_public.key)
@@ -135,12 +131,8 @@ for i in "${!CLIENTS[@]}"; do
     info "  -> Client : $CLIENT ($CLIENT_IP)"
 
     # Generation des cles client
-    if [ -f "/etc/wireguard/clients/${CLIENT}_private.key" ]; then
-        warn "    Les cles de $CLIENT existent deja, elles seront conservees."
-    else
-        wg genkey | tee "/etc/wireguard/clients/${CLIENT}_private.key" | \
-            wg pubkey > "/etc/wireguard/clients/${CLIENT}_public.key"
-    fi
+    wg genkey | tee "/etc/wireguard/clients/${CLIENT}_private.key" | \
+        wg pubkey > "/etc/wireguard/clients/${CLIENT}_public.key"
 
     CLIENT_PRIV=$(cat "/etc/wireguard/clients/${CLIENT}_private.key")
     CLIENT_PUB=$(cat "/etc/wireguard/clients/${CLIENT}_public.key")
