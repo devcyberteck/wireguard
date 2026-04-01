@@ -1,11 +1,16 @@
 #!/bin/bash
 ###############################################################################
-#  Upload des configs WireGuard sur file.io pour telechargement externe
-#  Les fichiers sont supprimes automatiquement apres le 1er telechargement
+#  Telechargement des configs WireGuard via ngrok
 #
-#  Usage : sudo bash download-configs.sh
-#  Puis recopiez les URLs affichees dans votre navigateur
+#  Usage :
+#    sudo bash download-configs.sh              (lance le serveur + ngrok)
+#    sudo bash download-configs.sh YOUR_TOKEN   (configure le token ngrok)
+#
+#  Prerequis : un compte gratuit sur https://ngrok.com
 ###############################################################################
+
+PORT=8080
+CONFIGS_DIR="/etc/wireguard/clients"
 
 # Verification root
 if [ "$EUID" -ne 0 ]; then
@@ -14,68 +19,131 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Verification que les configs existent
-if [ ! -d /etc/wireguard/clients ]; then
+if [ ! -d "$CONFIGS_DIR" ]; then
     echo "[ERREUR] Aucune config client trouvee. Lancez d'abord setup-wireguard.sh"
     exit 1
 fi
 
-# Installer curl si absent
-if ! command -v curl &>/dev/null; then
-    apt install -y curl
+# ========================= INSTALLATION NGROK ===============================
+if ! command -v ngrok &>/dev/null; then
+    echo "[INFO] Installation de ngrok..."
+    curl -s https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-linux-amd64.tgz | tar xz -C /usr/local/bin
+    if ! command -v ngrok &>/dev/null; then
+        echo "[ERREUR] Installation de ngrok echouee."
+        exit 1
+    fi
+    echo "[INFO] ngrok installe."
 fi
 
+# ========================= TOKEN NGROK ======================================
+if [ -n "$1" ]; then
+    echo "[INFO] Configuration du token ngrok..."
+    ngrok config add-authtoken "$1"
+    echo "[INFO] Token configure."
+fi
+
+# Verifier que le token est configure
+if ! ngrok config check &>/dev/null && [ -z "$1" ]; then
+    echo ""
+    echo "============================================="
+    echo "  TOKEN NGROK REQUIS"
+    echo "============================================="
+    echo ""
+    echo "  1. Cree un compte gratuit sur https://ngrok.com"
+    echo "  2. Copie ton token depuis : ngrok.com/dashboard"
+    echo "     section 'Your Authtoken'"
+    echo ""
+    echo "  3. Relance avec ton token :"
+    echo "     sudo bash download-configs.sh TON_TOKEN"
+    echo ""
+    echo "============================================="
+    exit 1
+fi
+
+# ========================= PREPARATION FICHIERS =============================
+TMPDIR=$(mktemp -d)
+
+cp "$CONFIGS_DIR"/*.conf "$TMPDIR/"
+
+cat > "$TMPDIR/index.html" <<'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WireGuard - Configs</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; background: #1a1a2e; color: #eee; }
+        h1 { color: #e94560; }
+        a { display: block; margin: 20px 0; padding: 20px; background: #16213e;
+            text-decoration: none; border-radius: 8px; font-size: 1.2em; color: #e94560; }
+        a:hover { background: #0f3460; color: #fff; }
+        .warn { color: #f5a623; font-size: 0.9em; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <h1>WireGuard Configs</h1>
+    <p>Cliquez pour telecharger :</p>
+    <a href="admindamien.conf">admindamien.conf (Damien)</a>
+    <a href="adminbetty.conf">adminbetty.conf (Betty)</a>
+    <p class="warn">Fermez ce serveur apres telechargement (Ctrl+C dans le terminal).<br>
+    Ces fichiers contiennent des cles privees !</p>
+</body>
+</html>
+HTMLEOF
+
+# ========================= LANCEMENT ========================================
+# Demarrer le serveur HTTP en arriere-plan
+cd "$TMPDIR"
+python3 -m http.server $PORT --bind 127.0.0.1 &
+HTTP_PID=$!
+
+# Demarrer ngrok en arriere-plan
+ngrok http $PORT --log=stdout > /tmp/ngrok.log 2>&1 &
+NGROK_PID=$!
+
+# Attendre que ngrok demarre
+sleep 3
+
+# Recuperer l'URL publique ngrok
+NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null | grep -oP '"public_url"\s*:\s*"\K[^"]+' | head -1)
+
 echo ""
 echo "============================================="
-echo "  Upload des configs WireGuard"
+echo "  SERVEUR PRET !"
 echo "============================================="
 echo ""
 
-for CONF in /etc/wireguard/clients/*.conf; do
-    NAME=$(basename "$CONF")
-    echo "[...] Upload de $NAME ..."
+if [ -n "$NGROK_URL" ]; then
+    echo "  Ouvre cette URL dans ton navigateur :"
+    echo ""
+    echo "  $NGROK_URL"
+    echo ""
+else
+    echo "  [WARN] Impossible de recuperer l'URL ngrok."
+    echo "  Verifie dans /tmp/ngrok.log"
+    echo "  Ou va sur http://127.0.0.1:4040 depuis le serveur."
+    echo ""
+fi
 
-    RESPONSE=$(curl -s -F "file=@${CONF}" https://file.io)
-    URL=$(echo "$RESPONSE" | grep -oP '"link"\s*:\s*"\K[^"]+')
-
-    if [ -n "$URL" ]; then
-        echo ""
-        echo "=========================================="
-        echo "  $NAME"
-        echo "  $URL"
-        echo "=========================================="
-        echo ""
-    else
-        echo "[ERREUR] Echec upload de $NAME"
-        echo "  Reponse: $RESPONSE"
-        echo ""
-        echo "  Tentative avec transfer.sh ..."
-        URL=$(curl -s --upload-file "$CONF" "https://transfer.sh/${NAME}")
-        if [ -n "$URL" ]; then
-            echo ""
-            echo "=========================================="
-            echo "  $NAME"
-            echo "  $URL"
-            echo "=========================================="
-            echo ""
-        else
-            echo "[ERREUR] Echec des 2 services. Affichage du contenu :"
-            echo "-----"
-            cat "$CONF"
-            echo "-----"
-        fi
-    fi
-done
-
+echo "  Fichiers disponibles :"
+echo "    - admindamien.conf  (Damien)"
+echo "    - adminbetty.conf   (Betty)"
 echo ""
-echo "============================================="
-echo "  INSTRUCTIONS"
+echo "  Ctrl+C pour arreter le serveur"
 echo "============================================="
 echo ""
-echo "  1. Recopiez les URLs ci-dessus dans votre navigateur"
-echo "  2. Le fichier se telecharge automatiquement"
-echo "  3. Importez le .conf dans l'app WireGuard du client"
-echo ""
-echo "  ATTENTION : chaque lien ne fonctionne qu'UNE SEULE FOIS"
-echo "  Relancez ce script si vous avez besoin d'un nouveau lien"
-echo ""
-echo "============================================="
+
+# Attendre Ctrl+C
+cleanup() {
+    echo ""
+    echo "[INFO] Arret du serveur..."
+    kill $HTTP_PID 2>/dev/null
+    kill $NGROK_PID 2>/dev/null
+    rm -rf "$TMPDIR"
+    echo "[INFO] Serveur arrete, fichiers temporaires supprimes."
+    exit 0
+}
+
+trap cleanup INT TERM
+
+# Garder le script actif
+wait $NGROK_PID
