@@ -1,0 +1,24 @@
+umask 077
+wg genkey | tee client_private.key | wg pubkey > client_public.key
+
+sudo bash -c 'cat > /etc/wireguard/wg0.conf <<EOF 
+[Interface] 
+# Clé privée du serveur injectée depuis le fichier 
+PrivateKey = '$(cat /etc/wireguard/server_private.key)' 
+Address = 192.168.1.199/24 ListenPort = 51820 
+# Interface réseau sur laquelle le serveur écoute 
+PostUp = ip link set dev wg0 up 
+PostDown = ip link set dev wg0 down EOF' 
+
+sudo systemctl enable wg-quick@wg0 
+sudo systemctl start wg-quick@wg0 
+sudo wg show
+
+# Activer immédiatement
+sudo sysctl -w net.ipv4.ip_forward=1
+
+# Rendre permanent
+echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+umask 077 wg genkey | tee admindamien_private.key | wg pubkey > admindamien_public.key
