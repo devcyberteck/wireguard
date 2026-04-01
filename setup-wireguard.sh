@@ -58,13 +58,16 @@ if [ -z "$SERVER_INTERFACE" ]; then
     info "Interface reseau detectee : $SERVER_INTERFACE"
 fi
 
-# Auto-detection de l'IP du serveur
+# Auto-detection de l'IP publique du serveur (visible depuis internet)
 if [ -z "$SERVER_PUBLIC_IP" ]; then
-    SERVER_PUBLIC_IP=$(ip -4 addr show "$SERVER_INTERFACE" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    info "Detection de l'IP publique..."
+    SERVER_PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org) \
+        || SERVER_PUBLIC_IP=$(curl -s --max-time 5 https://ifconfig.me) \
+        || SERVER_PUBLIC_IP=$(curl -s --max-time 5 https://icanhazip.com)
     if [ -z "$SERVER_PUBLIC_IP" ]; then
-        error "Impossible de detecter l'IP du serveur. Renseignez SERVER_PUBLIC_IP dans le script."
+        error "Impossible de detecter l'IP publique. Renseignez SERVER_PUBLIC_IP dans le script."
     fi
-    info "IP du serveur detectee : $SERVER_PUBLIC_IP"
+    info "IP publique detectee : $SERVER_PUBLIC_IP"
 fi
 
 echo ""
