@@ -79,6 +79,19 @@ echo "  Clients        : ${CLIENTS[*]}"
 echo "============================================="
 echo ""
 
+# ========================= CORRECTION SOURCES APT ===========================
+info "Verification des sources APT..."
+if grep -q "file:///cdrom" /etc/apt/sources.list 2>/dev/null; then
+    warn "Source cdrom detectee, correction en cours..."
+    cat > /etc/apt/sources.list <<APTEOF
+deb http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu jammy-backports main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
+APTEOF
+    info "Sources APT corrigees."
+fi
+
 # ========================= INSTALLATION =====================================
 info "Mise a jour des paquets..."
 apt update -y
