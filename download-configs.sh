@@ -27,11 +27,12 @@ fi
 
 # ========================= INSTALLATION NGROK ===============================
 if ! command -v ngrok &>/dev/null; then
-    echo "[INFO] Installation de ngrok via apt..."
-    curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list
-    apt update -y
-    apt install -y ngrok
+    echo "[INFO] Installation de ngrok..."
+    apt install -y wget unzip
+    wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip -O /tmp/ngrok.zip
+    unzip -o /tmp/ngrok.zip -d /usr/local/bin/
+    rm -f /tmp/ngrok.zip
+    chmod +x /usr/local/bin/ngrok
     if ! command -v ngrok &>/dev/null; then
         echo "[ERREUR] Installation de ngrok echouee."
         exit 1
